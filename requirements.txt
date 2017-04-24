@@ -1,4 +1,4 @@
-molotov
+git+https://github.com/loads/molotov.git
 pexpect
 configparser==3.5.0b2
 PyBrowserID

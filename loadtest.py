@@ -4,15 +4,20 @@
 """
 Load test for the SyncStorage server
 """
+import os
+import hmac
 import random
 import time
 from urllib.parse import urlparse, urlunparse
+import base64
+import hashlib
 
 from tokenlib import make_token, get_derived_secret as derive
 import browserid.jwt
 import browserid.tests.support
 
-from molotov import json_request, global_setup, set_var, get_var, scenario
+from molotov import (json_request, global_setup, set_var, get_var, scenario,
+                     setup)
 
 
 # Assertions are good for one year (in seconds).
@@ -42,13 +47,19 @@ MOCKMYID_PRIVATE_KEY = browserid.jwt.DS128Key({
 _DEFAULT = "https://token.stage.mozaws.net"
 
 
-class TokenCreator(object):
+def b64encode(data):
+    return base64.b64encode(data).decode("ascii")
+
+
+class StorageClient(object):
     def __init__(self, server_url=_DEFAULT):
         self.timeskew = 0
         self.server_url = server_url
         self.auth_token = None
         self.auth_secret = None
         self.endpoint_url = None
+        self.endpoint_scheme = None
+        self.endpoint_host = None
         self.generate()
 
     def __repr__(self):
@@ -108,12 +119,73 @@ class TokenCreator(object):
             self.auth_secret = credentials["key"].encode('ascii')
             self.endpoint_url = credentials["api_endpoint"]
 
+        url = urlparse(self.endpoint_url)
+        self.endpoint_scheme = url.scheme
+        if ':' in url.netloc:
+            self.endpoint_host, self.endpoint_port = url.netloc.rsplit(":", 1)
+        else:
+            self.endpoint_host = url.netloc
+            if url.scheme == "http":
+                self.endpoint_port = "80"
+            else:
+                self.endpoint_port = "443"
+
+    def _normalize(self, params, path_qs, meth='GET'):
+        bits = []
+        bits.append("hawk.1.header")
+        bits.append(params["ts"])
+        bits.append(params["nonce"])
+        bits.append(meth)
+        bits.append(path_qs)
+        bits.append(self.endpoint_host.lower())
+        bits.append(self.endpoint_port)
+        bits.append(params.get("hash", ""))
+        bits.append(params.get("ext", ""))
+        bits.append("")     # to get the trailing newline
+        return "\n".join(bits)
+
+    def _sign(self, params, path_qs, meth='GET'):
+        algorithm = "sha256"
+        sigstr = self._normalize(params, path_qs, meth)
+        sigstr = sigstr.encode("ascii")
+        key = self.auth_secret
+        hashmod = hashlib.sha256
+        return b64encode(hmac.new(key, sigstr, hashmod).digest())
+
+    def _auth(self, params, path_qs, meth='GET'):
+        params = {"ts": str(int(time.time()) + self.timeskew)}
+        params["id"] = self.auth_token.decode('ascii')
+        params["ts"] = str(int(time.time()))
+        params["nonce"] = b64encode(os.urandom(5))
+        params["mac"] = self._sign(params, path_qs, meth)
+        res = ', '.join(['%s="%s"' % (k, v) for k, v in params.items()])
+        return 'Hawk ' + res
+
+    async def get(self, session, path_qs, *args, **kw):
+        url = self.endpoint_url + path_qs
+        headers = {'Authorization': self._auth('GET', path_qs),
+                   'Host': self.endpoint_host}
+
+        async with session.get(url, headers=headers) as resp:
+            if resp.status == 401:
+                server_time = int(float(resp.headers["X-Weave-Timestamp"]))
+                self.timeskew = server_time - int(time.time())
+                headers['Authorization'] = self._auth('GET', path_qs)
+                async with session.get(url, headers=headers) as resp:
+                    return resp
+            else:
+                return resp
+
 
 @global_setup()
 def set_token(args):
-    set_var('token', TokenCreator())
+    set_var('client', StorageClient())
 
 
 @scenario(1)
 async def test(session):
-    print(get_var('token'))
+    storage = get_var('client')
+    url = "/info/collections"
+
+    resp = await storage.get(session, url)
+    assert resp.status in (200, 404)
