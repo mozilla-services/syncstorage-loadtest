@@ -121,6 +121,7 @@ class StorageClient(object):
 
         url = urlparse(self.endpoint_url)
         self.endpoint_scheme = url.scheme
+        self.endpoint_path = url.path
         if ':' in url.netloc:
             self.endpoint_host, self.endpoint_port = url.netloc.rsplit(":", 1)
         else:
@@ -136,7 +137,7 @@ class StorageClient(object):
         bits.append(params["ts"])
         bits.append(params["nonce"])
         bits.append(meth)
-        bits.append(path_qs)
+        bits.append(self.endpoint_path + path_qs)
         bits.append(self.endpoint_host.lower())
         bits.append(self.endpoint_port)
         bits.append(params.get("hash", ""))
