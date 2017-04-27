@@ -153,17 +153,50 @@ class StorageClient(object):
         res = ', '.join(['%s="%s"' % (k, v) for k, v in params.items()])
         return 'Hawk ' + res
 
-    async def get(self, session, path_qs, *args, **kw):
+    async def post(self, session, path_qs, data, *args, statuses=None,
+                   params=None):
+        url = self.endpoint_url + path_qs
+        headers = {'Authorization': self._auth('POST', path_qs),
+                   'Host': self.endpoint_host,
+                   'Content-Type': 'application/json',
+                   'X-Confirm-Delete': '1'}
+
+        async with session.post(url, headers=headers, params=params) as resp:
+            if statuses is not None:
+                assert resp.status in statuses, resp.status
+            return resp
+
+    async def put(self, session, path_qs, data, *args, statuses=None,
+                  params=None):
+        url = self.endpoint_url + path_qs
+        headers = {'Authorization': self._auth('PUT', path_qs),
+                   'Host': self.endpoint_host,
+                   'Content-Type': 'application/json',
+                   'X-Confirm-Delete': '1'}
+
+        async with session.put(url, headers=headers, params=params) as resp:
+            if statuses is not None:
+                assert resp.status in statuses, resp.status
+            return resp
+
+    async def get(self, session, path_qs, statuses=None, params=None):
         url = self.endpoint_url + path_qs
         headers = {'Authorization': self._auth('GET', path_qs),
-                   'Host': self.endpoint_host}
+                   'Host': self.endpoint_host,
+                   'Content-Type': 'application/json',
+                   'X-Confirm-Delete': '1'}
 
-        async with session.get(url, headers=headers) as resp:
+        async with session.get(url, headers=headers, params=params) as resp:
             if resp.status == 401:
                 server_time = int(float(resp.headers["X-Weave-Timestamp"]))
                 self.timeskew = server_time - int(time.time())
                 headers['Authorization'] = self._auth('GET', path_qs)
-                async with session.get(url, headers=headers) as resp:
+                async with session.get(url, headers=headers,
+                                       params=params) as resp:
+                    if statuses is not None:
+                        assert resp.status in statuses, resp.status
                     return resp
             else:
+                if statuses is not None:
+                    assert resp.status in statuses
                 return resp
