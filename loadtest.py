@@ -50,10 +50,10 @@ async def test(session):
 
     # GET requests to meta/global
     num_requests = get_num_requests('metaglobal')
-    for x in range(num_requests):
-        url = "/storage/meta/global"
-        resp = await storage.get(session, url, (200, 404))
+    url = "/storage/meta/global"
 
+    for x in range(num_requests):
+        resp = await storage.get(session, url, (200, 404))
         if resp.status == 404:
             data = json.dumps({"id": "global", "payload": _PAYLOAD})
             await storage.put(session, url, data=data, statuses=(200,))

@@ -129,7 +129,7 @@ class StorageClient(object):
             else:
                 self.endpoint_port = "443"
 
-    def _normalize(self, params, url, meth='GET'):
+    def _normalize(self, params, url, meth):
         bits = []
         bits.append("hawk.1.header")
         bits.append(params["ts"])
