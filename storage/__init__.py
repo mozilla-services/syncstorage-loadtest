@@ -136,8 +136,12 @@ class StorageClient(object):
         bits.append(params["nonce"])
         bits.append(meth)
         url = urlparse(url)
-        print(meth + ' ' + url.path)
-        bits.append(url.path)
+        if url.query:
+            path_qs = url.path + '?' + url.query
+        else:
+            path_qs = url.path
+        print(meth + ' ' + path_qs)
+        bits.append(path_qs)
         bits.append(self.endpoint_host.lower())
         bits.append(self.endpoint_port)
         bits.append(params.get("hash", ""))
