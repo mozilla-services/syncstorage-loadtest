@@ -2,7 +2,7 @@ import os
 import hmac
 import random
 import time
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse, urlunparse, urlencode
 import base64
 import hashlib
 
@@ -53,6 +53,12 @@ class StorageClient(object):
         self.endpoint_scheme = None
         self.endpoint_host = None
         self.generate()
+
+    def _get_url(self, path, params=None):
+        url = self.endpoint_url + path
+        if params is not None:
+            url += '?' + urlencode(params)
+        return url
 
     def __repr__(self):
         return str(self.auth_token)
@@ -123,13 +129,15 @@ class StorageClient(object):
             else:
                 self.endpoint_port = "443"
 
-    def _normalize(self, params, path_qs, meth='GET'):
+    def _normalize(self, params, url, meth='GET'):
         bits = []
         bits.append("hawk.1.header")
         bits.append(params["ts"])
         bits.append(params["nonce"])
         bits.append(meth)
-        bits.append(self.endpoint_path + path_qs)
+        url = urlparse(url)
+        print(meth + ' ' + url.path)
+        bits.append(url.path)
         bits.append(self.endpoint_host.lower())
         bits.append(self.endpoint_port)
         bits.append(params.get("hash", ""))
@@ -137,51 +145,76 @@ class StorageClient(object):
         bits.append("")     # to get the trailing newline
         return "\n".join(bits)
 
-    def _sign(self, params, path_qs, meth='GET'):
-        sigstr = self._normalize(params, path_qs, meth)
+    def _sign(self, params, url, meth):
+        sigstr = self._normalize(params, url, meth)
         sigstr = sigstr.encode("ascii")
         key = self.auth_secret
         hashmod = hashlib.sha256
         return b64encode(hmac.new(key, sigstr, hashmod).digest())
 
-    def _auth(self, params, path_qs, meth='GET'):
+    def _auth(self, meth, url):
         params = {"ts": str(int(time.time()) + self.timeskew)}
         params["id"] = self.auth_token.decode('ascii')
         params["ts"] = str(int(time.time()))
         params["nonce"] = b64encode(os.urandom(5))
-        params["mac"] = self._sign(params, path_qs, meth)
+        params["mac"] = self._sign(params, url, meth)
         res = ', '.join(['%s="%s"' % (k, v) for k, v in params.items()])
         return 'Hawk ' + res
 
     async def post(self, session, path_qs, data, *args, statuses=None,
                    params=None):
-        url = self.endpoint_url + path_qs
-        headers = {'Authorization': self._auth('POST', path_qs),
+        url = self._get_url(path_qs, params)
+
+        headers = {'Authorization': self._auth('POST', url),
                    'Host': self.endpoint_host,
                    'Content-Type': 'application/json',
                    'X-Confirm-Delete': '1'}
 
-        async with session.post(url, headers=headers, params=params) as resp:
-            if statuses is not None:
-                assert resp.status in statuses, resp.status
-            return resp
+        async with session.post(url, headers=headers, data=data,
+                                params=params) as resp:
+            if resp.status == 401:
+                server_time = int(float(resp.headers["X-Weave-Timestamp"]))
+                self.timeskew = server_time - int(time.time())
+                headers['Authorization'] = self._auth('POST', url)
+                async with session.post(url, headers=headers,
+                                        params=params, data=data) as resp:
+                    if statuses is not None:
+                        assert resp.status in statuses, resp.status
+                    return resp
+            else:
+                if statuses is not None:
+                    assert resp.status in statuses
+                return resp
+
 
     async def put(self, session, path_qs, data, *args, statuses=None,
                   params=None):
-        url = self.endpoint_url + path_qs
-        headers = {'Authorization': self._auth('PUT', path_qs),
+        url = self._get_url(path_qs, params)
+
+        headers = {'Authorization': self._auth('PUT', url),
                    'Host': self.endpoint_host,
                    'Content-Type': 'application/json',
                    'X-Confirm-Delete': '1'}
 
         async with session.put(url, headers=headers, params=params) as resp:
-            if statuses is not None:
-                assert resp.status in statuses, resp.status
-            return resp
+            if resp.status == 401:
+                server_time = int(float(resp.headers["X-Weave-Timestamp"]))
+                self.timeskew = server_time - int(time.time())
+                headers['Authorization'] = self._auth('PUT', url)
+                async with session.put(url, headers=headers,
+                                       params=params) as resp:
+                    if statuses is not None:
+                        assert resp.status in statuses, resp.status
+                    return resp
+            else:
+                if statuses is not None:
+                    assert resp.status in statuses
+                return resp
 
     async def get(self, session, path_qs, statuses=None, params=None):
-        url = self.endpoint_url + path_qs
-        headers = {'Authorization': self._auth('GET', path_qs),
+        url = self._get_url(path_qs, params)
+
+        headers = {'Authorization': self._auth('GET', url),
                    'Host': self.endpoint_host,
                    'Content-Type': 'application/json',
                    'X-Confirm-Delete': '1'}
@@ -190,7 +223,7 @@ class StorageClient(object):
             if resp.status == 401:
                 server_time = int(float(resp.headers["X-Weave-Timestamp"]))
                 self.timeskew = server_time - int(time.time())
-                headers['Authorization'] = self._auth('GET', path_qs)
+                headers['Authorization'] = self._auth('GET', url)
                 async with session.get(url, headers=headers,
                                        params=params) as resp:
                     if statuses is not None:
