@@ -174,14 +174,13 @@ class StorageClient(object):
                    'Content-Type': 'application/json',
                    'X-Confirm-Delete': '1'}
 
-        async with session.post(url, headers=headers, data=data,
-                                params=params) as resp:
+        async with session.post(url, headers=headers, data=data) as resp:
             if resp.status == 401:
                 server_time = int(float(resp.headers["X-Weave-Timestamp"]))
                 self.timeskew = server_time - int(time.time())
                 headers['Authorization'] = self._auth('POST', url)
                 async with session.post(url, headers=headers,
-                                        params=params, data=data) as resp:
+                                        data=data) as resp:
                     if statuses is not None:
                         assert resp.status in statuses, resp.status
                     return resp
@@ -200,13 +199,13 @@ class StorageClient(object):
                    'Content-Type': 'application/json',
                    'X-Confirm-Delete': '1'}
 
-        async with session.put(url, headers=headers, params=params) as resp:
+        async with session.put(url, headers=headers, data=data) as resp:
             if resp.status == 401:
                 server_time = int(float(resp.headers["X-Weave-Timestamp"]))
                 self.timeskew = server_time - int(time.time())
                 headers['Authorization'] = self._auth('PUT', url)
                 async with session.put(url, headers=headers,
-                                       params=params) as resp:
+                                       data=data) as resp:
                     if statuses is not None:
                         assert resp.status in statuses, resp.status
                     return resp
@@ -223,7 +222,7 @@ class StorageClient(object):
                    'Content-Type': 'application/json',
                    'X-Confirm-Delete': '1'}
 
-        async with session.get(url, headers=headers, params=params) as resp:
+        async with session.get(url, headers=headers) as resp:
             if resp.status == 401:
                 server_time = int(float(resp.headers["X-Weave-Timestamp"]))
                 self.timeskew = server_time - int(time.time())
