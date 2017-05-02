@@ -44,7 +44,8 @@ def b64encode(data):
 
 
 class StorageClient(object):
-    def __init__(self, server_url=_DEFAULT):
+    def __init__(self, session, server_url=_DEFAULT):
+        self.session = session
         self.timeskew = 0
         self.server_url = server_url
         self.auth_token = None
@@ -164,14 +165,14 @@ class StorageClient(object):
         res = ', '.join(['%s="%s"' % (k, v) for k, v in params.items()])
         return 'Hawk ' + res
 
-    async def _retry(self, session, meth, path_qs, params, data, statuses=None):
+    async def _retry(self, meth, path_qs, params, data, statuses=None):
         url = self._get_url(path_qs, params)
         headers = {'Authorization': self._auth(meth, url),
                    'Host': self.endpoint_host,
                    'Content-Type': 'application/json',
                    'X-Confirm-Delete': '1'}
 
-        call = getattr(session, meth.lower())
+        call = getattr(self.session, meth.lower())
 
         async with call(url, headers=headers, data=data) as resp:
             if resp.status == 401:
@@ -187,14 +188,14 @@ class StorageClient(object):
                     assert resp.status in statuses
                 return resp
 
-    async def post(self, session, path_qs, data=None, statuses=None,
+    async def post(self, path_qs, data=None, statuses=None,
                    params=None):
-        return await self._retry(session, 'POST', path_qs, params, data, statuses)
+        return await self._retry('POST', path_qs, params, data, statuses)
 
-    async def put(self, session, path_qs, data=None, statuses=None,
+    async def put(self, path_qs, data=None, statuses=None,
                    params=None):
-        return await self._retry(session, 'PUT', path_qs, params, data, statuses)
+        return await self._retry('PUT', path_qs, params, data, statuses)
 
-    async def get(self, session, path_qs, statuses=None, params=None):
-        return await self._retry(session, 'GET', path_qs, params, data=None,
+    async def get(self, path_qs, statuses=None, params=None):
+        return await self._retry('GET', path_qs, params, data=None,
                                  statuses=statuses)
