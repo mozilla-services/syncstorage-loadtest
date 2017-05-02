@@ -140,7 +140,6 @@ class StorageClient(object):
             path_qs = url.path + '?' + url.query
         else:
             path_qs = url.path
-        print(meth + ' ' + path_qs)
         bits.append(path_qs)
         bits.append(self.endpoint_host.lower())
         bits.append(self.endpoint_port)
@@ -165,74 +164,37 @@ class StorageClient(object):
         res = ', '.join(['%s="%s"' % (k, v) for k, v in params.items()])
         return 'Hawk ' + res
 
-    async def post(self, session, path_qs, data, *args, statuses=None,
+    async def _retry(self, session, meth, path_qs, params, data, statuses=None):
+        url = self._get_url(path_qs, params)
+        headers = {'Authorization': self._auth(meth, url),
+                   'Host': self.endpoint_host,
+                   'Content-Type': 'application/json',
+                   'X-Confirm-Delete': '1'}
+
+        call = getattr(session, meth.lower())
+
+        async with call(url, headers=headers, data=data) as resp:
+            if resp.status == 401:
+                server_time = int(float(resp.headers["X-Weave-Timestamp"]))
+                self.timeskew = server_time - int(time.time())
+                headers['Authorization'] = self._auth(meth, url)
+                async with call(url, headers=headers, data=data) as resp:
+                    if statuses is not None:
+                        assert resp.status in statuses, resp.status
+                    return resp
+            else:
+                if statuses is not None:
+                    assert resp.status in statuses
+                return resp
+
+    async def post(self, session, path_qs, data=None, statuses=None,
                    params=None):
-        url = self._get_url(path_qs, params)
+        return await self._retry(session, 'POST', path_qs, params, data, statuses)
 
-        headers = {'Authorization': self._auth('POST', url),
-                   'Host': self.endpoint_host,
-                   'Content-Type': 'application/json',
-                   'X-Confirm-Delete': '1'}
-
-        async with session.post(url, headers=headers, data=data) as resp:
-            if resp.status == 401:
-                server_time = int(float(resp.headers["X-Weave-Timestamp"]))
-                self.timeskew = server_time - int(time.time())
-                headers['Authorization'] = self._auth('POST', url)
-                async with session.post(url, headers=headers,
-                                        data=data) as resp:
-                    if statuses is not None:
-                        assert resp.status in statuses, resp.status
-                    return resp
-            else:
-                if statuses is not None:
-                    assert resp.status in statuses
-                return resp
-
-
-    async def put(self, session, path_qs, data, *args, statuses=None,
-                  params=None):
-        url = self._get_url(path_qs, params)
-
-        headers = {'Authorization': self._auth('PUT', url),
-                   'Host': self.endpoint_host,
-                   'Content-Type': 'application/json',
-                   'X-Confirm-Delete': '1'}
-
-        async with session.put(url, headers=headers, data=data) as resp:
-            if resp.status == 401:
-                server_time = int(float(resp.headers["X-Weave-Timestamp"]))
-                self.timeskew = server_time - int(time.time())
-                headers['Authorization'] = self._auth('PUT', url)
-                async with session.put(url, headers=headers,
-                                       data=data) as resp:
-                    if statuses is not None:
-                        assert resp.status in statuses, resp.status
-                    return resp
-            else:
-                if statuses is not None:
-                    assert resp.status in statuses
-                return resp
+    async def put(self, session, path_qs, data=None, statuses=None,
+                   params=None):
+        return await self._retry(session, 'PUT', path_qs, params, data, statuses)
 
     async def get(self, session, path_qs, statuses=None, params=None):
-        url = self._get_url(path_qs, params)
-
-        headers = {'Authorization': self._auth('GET', url),
-                   'Host': self.endpoint_host,
-                   'Content-Type': 'application/json',
-                   'X-Confirm-Delete': '1'}
-
-        async with session.get(url, headers=headers) as resp:
-            if resp.status == 401:
-                server_time = int(float(resp.headers["X-Weave-Timestamp"]))
-                self.timeskew = server_time - int(time.time())
-                headers['Authorization'] = self._auth('GET', url)
-                async with session.get(url, headers=headers,
-                                       params=params) as resp:
-                    if statuses is not None:
-                        assert resp.status in statuses, resp.status
-                    return resp
-            else:
-                if statuses is not None:
-                    assert resp.status in statuses
-                return resp
+        return await self._retry(session, 'GET', path_qs, params, data=None,
+                                 statuses=statuses)
