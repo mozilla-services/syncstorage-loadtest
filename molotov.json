@@ -6,22 +6,26 @@
                 "duration": 300,
                 "processes": 10,
                 "workers": 100,
-                "scenario": "loadtest.py"
+                "scenario": "loadtest.py",
+                "console": 1
             },
             "heavy": {
                 "duration": 300,
                 "processes": 1,
                 "workers": 10,
-                "scenario": "loadtest.py"
+                "scenario": "loadtest.py",
+                "console": 1
             },
             "test": {
                 "duration": 30,
                 "workers": 1,
-                "scenario": "loadtest.py"
+                "scenario": "loadtest.py",
+                "console": 1
             },
             "smoke": {
                 "max_runs": 1,
-                "scenario": "loadtest.py"
+                "scenario": "loadtest.py",
+                "console": 1
             }
         }
     }
