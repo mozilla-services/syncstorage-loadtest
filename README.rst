@@ -1,10 +1,10 @@
 Storage load test
 -----------------
-* Note: this requires Python version 3.5
+* Note: this requires Python version 3.5 or 3.6
 
 To run it locally::
 
-    $ virtualenv . -p python3.5
+    $ virtualenv .
     $ bin/pip install -r requirements.txt
     $ bin/molotov --max-runs 5 -cxv loadtest.py
 
