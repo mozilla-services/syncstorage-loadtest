@@ -43,7 +43,15 @@ def get_num_requests(name):
 
 @setup_session()
 async def _session(worker_num, session):
-    session.storage = StorageClient(session)
+    def _run():
+        session.storage = StorageClient(session)
+
+    # XXX code will be migrated to Molotov
+    # see https://github.com/loads/molotov/issues/100
+    import threading
+    t = threading.Thread(target=_run)
+    t.start()
+    t.join()
 
 
 @scenario(1)
@@ -53,7 +61,8 @@ async def test(session):
     # Always GET info/collections
     # This is also a good opportunity to correct for timeskew.
     url = "/info/collections"
-    await storage.get(url, (200, 404))
+    res = await storage.get(url, (200, 404))
+    await res.json()
 
     # GET requests to meta/global
     num_requests = get_num_requests('metaglobal')
@@ -72,6 +81,7 @@ async def test(session):
         params = {"full": "1", "newer": str(newer)}
         resp = await storage.get(url, params=params,
                                  statuses=(200, 404))
+        await resp.json()
 
     # Occasional updates to client records.
     if should_do('post'):
@@ -92,7 +102,7 @@ async def test(session):
         newer = int(time.time() - random.randint(3600, 360000))
         params = {"full": "1", "newer": str(newer)}
         resp = await storage.get(url, params=params, statuses=(200, 404))
-
+        await resp.json()
 
     # POST requests with several WBOs batched together
     num_requests = get_num_requests('post_count_distribution')
