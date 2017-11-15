@@ -173,13 +173,16 @@ class StorageClient(object):
                    'X-Confirm-Delete': '1'}
 
         call = getattr(self.session, meth.lower())
+        options = {'headers': headers}
+        if meth.lower() in ('post', 'put'):
+            options['data'] = data
 
-        async with call(url, headers=headers, data=data) as resp:
+        async with call(url, **options) as resp:
             if resp.status == 401:
                 server_time = int(float(resp.headers["X-Weave-Timestamp"]))
                 self.timeskew = server_time - int(time.time())
-                headers['Authorization'] = self._auth(meth, url)
-                async with call(url, headers=headers, data=data) as resp:
+                options['headers']['Authorization'] = self._auth(meth, url)
+                async with call(url, **options) as resp:
                     if statuses is not None:
                         assert resp.status in statuses, resp.status
                     return resp

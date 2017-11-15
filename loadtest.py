@@ -43,8 +43,13 @@ def get_num_requests(name):
 
 @setup_session()
 async def _session(worker_num, session):
+    exc = []
+
     def _run():
-        session.storage = StorageClient(session)
+        try:
+            session.storage = StorageClient(session)
+        except Exception as e:
+            exc.append(e)
 
     # XXX code will be migrated to Molotov
     # see https://github.com/loads/molotov/issues/100
@@ -52,6 +57,8 @@ async def _session(worker_num, session):
     t = threading.Thread(target=_run)
     t.start()
     t.join()
+    if len(exc) > 0:
+        raise exc[0]
 
 
 @scenario(1)
