@@ -188,7 +188,7 @@ class StorageClient(object):
                     return resp
             else:
                 if statuses is not None:
-                    assert resp.status in statuses
+                    assert resp.status in statuses, statuses
                 return resp
 
     async def post(self, path_qs, data=None, statuses=None,
