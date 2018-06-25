@@ -68,15 +68,14 @@ async def test(session):
     # Always GET info/collections
     # This is also a good opportunity to correct for timeskew.
     url = "/info/collections"
-    res = await storage.get(url, (200, 404))
-    await res.json()
+    await storage.get(url, (200, 404))
 
     # GET requests to meta/global
     num_requests = get_num_requests('metaglobal')
     url = "/storage/meta/global"
 
     for x in range(num_requests):
-        resp = await storage.get(url, (200, 404))
+        resp, __ = await storage.get(url, (200, 404))
         if resp.status == 404:
             data = json.dumps({"id": "global", "payload": _PAYLOAD})
             await storage.put(url, data=data, statuses=(200,))
@@ -86,9 +85,7 @@ async def test(session):
         url = "/storage/clients"
         newer = int(time.time() - random.randint(3600, 360000))
         params = {"full": "1", "newer": str(newer)}
-        resp = await storage.get(url, params=params,
-                                 statuses=(200, 404))
-        await resp.json()
+        await storage.get(url, params=params, statuses=(200, 404))
 
     # Occasional updates to client records.
     if should_do('post'):
@@ -96,8 +93,7 @@ async def test(session):
         url = "/storage/clients"
         wbo = {'id': 'client' + cid, 'payload': cid * 300}
         data = json.dumps([wbo])
-        resp = await storage.post(url, data=data, statuses=(200,))
-        result = await resp.json()
+        resp, result = await storage.post(url, data=data, statuses=(200,))
         assert len(result["success"]) == 1
         assert len(result["failed"]) == 0
 
@@ -108,8 +104,7 @@ async def test(session):
         url = "/storage/" + cols[x]
         newer = int(time.time() - random.randint(3600, 360000))
         params = {"full": "1", "newer": str(newer)}
-        resp = await storage.get(url, params=params, statuses=(200, 404))
-        await resp.json()
+        await storage.get(url, params=params, statuses=(200, 404))
 
     # POST requests with several WBOs batched together
     num_requests = get_num_requests('post_count_distribution')
@@ -164,8 +159,7 @@ async def test(session):
             else:
                 url += "?batch=%s" % batch_id
 
-        resp = await storage.post(url, data=data, statuses=(status,))
-        result = await resp.json()
+        resp, result = await storage.post(url, data=data, statuses=(status,))
         assert len(result["success"]) == items_per_batch, result
         assert len(result["failed"]) == 0, result
 

@@ -185,11 +185,14 @@ class StorageClient(object):
                 async with call(url, **options) as resp:
                     if statuses is not None:
                         assert resp.status in statuses, resp.status
-                    return resp
+                    body = await resp.json()
+                    return resp, body
             else:
                 if statuses is not None:
                     assert resp.status in statuses, statuses
-                return resp
+
+                body = await resp.json()
+                return resp, body
 
     async def post(self, path_qs, data=None, statuses=None,
                    params=None):
