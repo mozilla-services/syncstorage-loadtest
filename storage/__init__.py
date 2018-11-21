@@ -48,8 +48,11 @@ class StorageClient(object):
         self.session = session
         self.timeskew = 0
         self.server_url = server_url
+        self.uid = None
         self.auth_token = None
         self.auth_secret = None
+        self.auth_expires_at = 0
+        self.auth_regeneration_flag = False
         self.endpoint_url = None
         self.endpoint_scheme = None
         self.endpoint_host = None
@@ -66,22 +69,28 @@ class StorageClient(object):
 
     def generate(self):
         """Pick an identity, log in and generate the auth token."""
+        self.uid = random.randint(1, 1000000)
+        self.regenerate()
+
+    def regenerate(self):
+        """Generate an auth token for the selected identity."""
         # If the server_url has a hash fragment, it's a storage node and
         # that's the secret.  Otherwise it's a token server url.
-        uid = random.randint(1, 1000000)
         url = urlparse(self.server_url)
         if url.fragment:
-            endpoint = url._replace(fragment="", path="/1.5/" + str(uid))
+            endpoint = url._replace(fragment="", path="/1.5/" + str(self.uid))
             self.endpoint_url = urlunparse(endpoint)
+            token_duration = ASSERTION_LIFETIME
             data = {
-                "uid": uid,
+                "uid": self.uid,
                 "node": urlunparse(url._replace(fragment="")),
-                "expires": time.time() + ASSERTION_LIFETIME,
+                "expires": time.time() + token_duration,
             }
             self.auth_token = make_token(data, secret=url.fragment)
             self.auth_secret = derive(self.auth_token, secret=url.fragment)
+            self.auth_expires_at = data["expires"]
         else:
-            email = "user%s@%s" % (uid, MOCKMYID_DOMAIN)
+            email = "user%s@%s" % (self.uid, MOCKMYID_DOMAIN)
             exp = time.time() + ASSERTION_LIFETIME + self.timeskew
             assertion = browserid.tests.support.make_assertion(
                 email=email,
@@ -117,6 +126,11 @@ class StorageClient(object):
             self.auth_token = credentials["id"].encode('ascii')
             self.auth_secret = credentials["key"].encode('ascii')
             self.endpoint_url = credentials["api_endpoint"]
+            token_duration = credentials['duration']
+
+        # Regenerate tokens when they're close to expiring
+        # but before they actually expire, to avoid spurious 401s.
+        self.auth_expires_at = time.time() + (token_duration * 0.5)
 
         url = urlparse(self.endpoint_url)
         self.endpoint_scheme = url.scheme
@@ -157,9 +171,20 @@ class StorageClient(object):
         return b64encode(hmac.new(key, sigstr, hashmod).digest())
 
     def _auth(self, meth, url):
-        params = {"ts": str(int(time.time()) + self.timeskew)}
+        ts = time.time()
+        if ts >= self.auth_expires_at:
+            # Try to exclude multiple co-routines from regenerating
+            # the token.  It's safe to regenerate multiple times
+            # but would be wasted work.
+            if not self.auth_regeneration_flag:
+                self.auth_regeneration_flag = True
+                try:
+                    self.regenerate()
+                finally:
+                    self.auth_regeneration_flag = False
+        params = {}
         params["id"] = self.auth_token.decode('ascii')
-        params["ts"] = str(int(time.time()))
+        params["ts"] = str(int(ts) + self.timeskew)
         params["nonce"] = b64encode(os.urandom(5))
         params["mac"] = self._sign(params, url, meth)
         res = ', '.join(['%s="%s"' % (k, v) for k, v in params.items()])
@@ -185,11 +210,14 @@ class StorageClient(object):
                 async with call(url, **options) as resp:
                     if statuses is not None:
                         assert resp.status in statuses, resp.status
-                    return resp
+                    body = await resp.json()
+                    return resp, body
             else:
                 if statuses is not None:
-                    assert resp.status in statuses
-                return resp
+                    assert resp.status in statuses, statuses
+
+                body = await resp.json()
+                return resp, body
 
     async def post(self, path_qs, data=None, statuses=None,
                    params=None):
