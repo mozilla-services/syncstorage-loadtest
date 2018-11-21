@@ -130,6 +130,7 @@ class StorageClient(object):
 
         # Regenerate tokens when they're close to expiring
         # but before they actually expire, to avoid spurious 401s.
+        
         self.auth_expires_at = time.time() + (token_duration * 0.5)
 
         url = urlparse(self.endpoint_url)
