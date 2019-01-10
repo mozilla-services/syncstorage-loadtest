@@ -81,8 +81,14 @@ class StorageClient(object):
             endpoint = url._replace(fragment="", path="/1.5/" + str(self.uid))
             self.endpoint_url = urlunparse(endpoint)
             token_duration = ASSERTION_LIFETIME
+            # Some storage backends use the numeric tokenserver uid, and some use
+            # the raw fxa uid and kid.  Let's include mock values for both cases,
+            # with everything derived from the mock uid for consistency..
             data = {
                 "uid": self.uid,
+                "fxa_uid": hashlib.sha256("{}:fxa_uid".format(uid)).hexdigest(),
+                "fxa_kid": hashlib.sha256("{}:fxa_kid".format(uid)).hexdigest()[:32],
+                "hashed_fxa_uid": hashlib.sha256("{}:hashed_fxa_uid".format(uid)).hexdigest(),
                 "node": urlunparse(url._replace(fragment="")),
                 "expires": time.time() + token_duration,
             }
