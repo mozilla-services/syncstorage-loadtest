@@ -36,7 +36,7 @@ MOCKMYID_PRIVATE_KEY = browserid.jwt.DS128Key({
 })
 
 
-_DEFAULT = "https://token.stage.mozaws.net"
+_DEFAULT = os.environ.get("SERVER_URL", "https://token.stage.mozaws.net")
 
 
 def b64encode(data):
@@ -76,31 +76,36 @@ class StorageClient(object):
         """Generate an auth token for the selected identity."""
         # If the server_url has a hash fragment, it's a storage node and
         # that's the secret.  Otherwise it's a token server url.
+        uid = self.uid
         url = urlparse(self.server_url)
         if url.fragment:
-            endpoint = url._replace(fragment="", path="/1.5/" + str(self.uid))
+            endpoint = url._replace(
+                path=url.path.rstrip("/") + "/1.5/" + str(uid),
+                fragment="",
+            )
             self.endpoint_url = urlunparse(endpoint)
             token_duration = ASSERTION_LIFETIME
             # Some storage backends use the numeric tokenserver uid, and some use
             # the raw fxa uid and kid.  Let's include mock values for both cases,
             # with everything derived from the mock uid for consistency..
             data = {
-                "uid": self.uid,
-                "fxa_uid": hashlib.sha256("{}:fxa_uid".format(uid)).hexdigest(),
-                "fxa_kid": hashlib.sha256("{}:fxa_kid".format(uid)).hexdigest()[:32],
-                "hashed_fxa_uid": hashlib.sha256("{}:hashed_fxa_uid".format(uid)).hexdigest(),
-                "node": urlunparse(url._replace(fragment="")),
+                "uid": uid,
+                "fxa_uid": hashlib.sha256("{}:fxa_uid".format(uid).encode("ascii")).hexdigest(),
+                "fxa_kid": hashlib.sha256("{}:fxa_kid".format(uid).encode("ascii")).hexdigest()[:32],
+                "hashed_fxa_uid": hashlib.sha256("{}:hashed_fxa_uid".format(uid).encode("ascii")).hexdigest(),
+                "node": urlunparse(url._replace(path="", fragment="")),
                 "expires": time.time() + token_duration,
             }
-            self.auth_token = make_token(data, secret=url.fragment)
-            self.auth_secret = derive(self.auth_token, secret=url.fragment)
+            auth_token = make_token(data, secret=url.fragment)
+            self.auth_token = auth_token.encode("ascii")
+            self.auth_secret = derive(auth_token, secret=url.fragment).encode("ascii")
             self.auth_expires_at = data["expires"]
         else:
-            email = "user%s@%s" % (self.uid, MOCKMYID_DOMAIN)
+            email = "user%s@%s" % (uid, MOCKMYID_DOMAIN)
             exp = time.time() + ASSERTION_LIFETIME + self.timeskew
             assertion = browserid.tests.support.make_assertion(
                 email=email,
-                audience=self.server_url,
+                audience=urlunparse(url._replace(path="")),
                 issuer=MOCKMYID_DOMAIN,
                 issuer_keypair=(None, MOCKMYID_PRIVATE_KEY),
                 exp=int(exp * 1000),
