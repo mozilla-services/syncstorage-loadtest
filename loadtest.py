@@ -17,11 +17,15 @@ like this
 _WEIGHTS = {'metaglobal': [40, 60, 0, 0, 0],
             'distribution': [80, 15, 4, 1],
             'count_distribution': [71, 15, 7, 4, 3],
-            'post_count_distribution': [67, 18, 9, 4, 2]}
+            'post_count_distribution': [67, 18, 9, 4, 2],
+            'delete_count_distribution': [99, 1, 0, 0, 0]}
 
-_PROBS = {'get': .1, 'post': .2}
+_PROBS = {'get': .1, 'post': .2, 'deleteall': 0.01}
 _COLLS = ['bookmarks', 'forms', 'passwords', 'history', 'prefs']
 _BATCH_MAX_COUNT = 100
+
+_DISABLE_DELETES = (os.environ.get('DISABLE_DELETES', 'false').lower()
+                    in ('true', '1'))
 
 
 def should_do(name):
@@ -29,7 +33,7 @@ def should_do(name):
 
 
 def get_num_requests(name):
-    weights = _WEIGHTS['metaglobal']
+    weights = _WEIGHTS[name]
     i = random.randint(1, sum(weights))
     count = 0
     base = 0
@@ -165,3 +169,19 @@ async def test(session):
 
         if transact and not committing:
             batch_id = result["batch"]
+
+    if not _DISABLE_DELETES:
+        # DELETE requests.
+        # We might choose to delete some individual collections, or to
+        # do a full reset and delete all the data.  Never both in the
+        # same run.
+        num_requests = get_num_requests('delete_count_distribution')
+        if num_requests:
+            cols = random.sample(_COLLS, num_requests)
+            for x in range(num_requests):
+                url = "/storage/" + cols[x]
+                resp, result = await storage.delete(url, statuses=(200, 204))
+        else:
+            if should_do('deleteall'):
+                url = "/storage"
+                resp, result = await storage.delete(url, statuses=(200,))

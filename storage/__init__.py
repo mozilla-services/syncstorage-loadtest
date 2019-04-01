@@ -242,3 +242,6 @@ class StorageClient(object):
     async def get(self, path_qs, statuses=None, params=None):
         return await self._retry('GET', path_qs, params, data=None,
                                  statuses=statuses)
+
+    async def delete(self, path_qs, data=None, statuses=None, params=None):
+        return await self._retry('DELETE', path_qs, params, data, statuses)
