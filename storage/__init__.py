@@ -147,6 +147,7 @@ class StorageClient(object):
         url = urlparse(self.endpoint_url)
         self.endpoint_scheme = url.scheme
         self.endpoint_path = url.path
+        self.host_header = url.netloc
         if ':' in url.netloc:
             self.endpoint_host, self.endpoint_port = url.netloc.rsplit(":", 1)
         else:
@@ -205,7 +206,7 @@ class StorageClient(object):
     async def _retry(self, meth, path_qs, params, data, statuses=None):
         url = self._get_url(path_qs, params)
         headers = {'Authorization': self._auth(meth, url),
-                   'Host': self.endpoint_host,
+                   'Host': self.host_header,
                    'Content-Type': 'application/json',
                    'X-Confirm-Delete': '1'}
 
