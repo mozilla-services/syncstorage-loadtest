@@ -141,7 +141,7 @@ class StorageClient(object):
 
         # Regenerate tokens when they're close to expiring
         # but before they actually expire, to avoid spurious 401s.
-        
+
         self.auth_expires_at = time.time() + (token_duration * 0.5)
 
         url = urlparse(self.endpoint_url)
@@ -222,12 +222,20 @@ class StorageClient(object):
                 options['headers']['Authorization'] = self._auth(meth, url)
                 async with call(url, **options) as resp:
                     if statuses is not None:
-                        assert resp.status in statuses, resp.status
+                        assert resp.status in statuses, (
+                            "Reauth Response {} not in {}".format(
+                                resp.status,
+                                statuses)
+                        )
                     body = await resp.json()
                     return resp, body
             else:
                 if statuses is not None:
-                    assert resp.status in statuses, statuses
+                    assert resp.status in statuses,  (
+                            "Response {} not in {}".format(
+                                resp.status,
+                                statuses)
+                        )
 
                 body = await resp.json()
                 return resp, body
