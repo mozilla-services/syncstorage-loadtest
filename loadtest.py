@@ -71,13 +71,13 @@ async def test(session):
 
     # Respect the server limits.
     _, config = await storage.get("/info/configuration")
-    print("Config: {}".format(json.dumps(config, indent=3)))
+    # print("Config: {}".format(json.dumps(config, indent=3)))
     # fix up consts
     payload = _PAYLOAD[:config.get("max_record_payload_bytes")]
     # GET requests to meta/global
     num_requests = min(get_num_requests('metaglobal'),
                        config.get("max_post_records"))
-    batch_max_count = min(BATCH_MAX_COUNT, config.get("max_total_records"))
+    batch_max_count = min(_BATCH_MAX_COUNT, config.get("max_total_records"))
 
     # Always GET info/collections
     # This is also a good opportunity to correct for timeskew.
