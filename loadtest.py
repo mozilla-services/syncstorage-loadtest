@@ -17,11 +17,15 @@ like this
 _WEIGHTS = {'metaglobal': [40, 60, 0, 0, 0],
             'distribution': [80, 15, 4, 1],
             'count_distribution': [71, 15, 7, 4, 3],
-            'post_count_distribution': [67, 18, 9, 4, 2]}
+            'post_count_distribution': [67, 18, 9, 4, 2],
+            'delete_count_distribution': [99, 1, 0, 0, 0]}
 
-_PROBS = {'get': .1, 'post': .2}
+_PROBS = {'get': .1, 'post': .2, 'deleteall': 0.01}
 _COLLS = ['bookmarks', 'forms', 'passwords', 'history', 'prefs']
 _BATCH_MAX_COUNT = 100
+
+_DISABLE_DELETES = (os.environ.get('DISABLE_DELETES', 'false').lower()
+                    in ('true', '1'))
 
 
 def should_do(name):
@@ -29,7 +33,7 @@ def should_do(name):
 
 
 def get_num_requests(name):
-    weights = _WEIGHTS['metaglobal']
+    weights = _WEIGHTS[name]
     i = random.randint(1, sum(weights))
     count = 0
     base = 0
@@ -65,20 +69,27 @@ async def _session(worker_num, session):
 async def test(session):
     storage = session.storage
 
+    # Respect the server limits.
+    _, config = await storage.get("/info/configuration")
+    # print("Config: {}".format(json.dumps(config, indent=3)))
+    # fix up consts
+    payload = _PAYLOAD[:config.get("max_record_payload_bytes")]
+    # GET requests to meta/global
+    num_requests = min(get_num_requests('metaglobal'),
+                       config.get("max_post_records"))
+    batch_max_count = min(_BATCH_MAX_COUNT, config.get("max_total_records"))
+
     # Always GET info/collections
     # This is also a good opportunity to correct for timeskew.
     url = "/info/collections"
-    res = await storage.get(url, (200, 404))
-    await res.json()
+    resp, _ = await storage.get(url, (200, 404))
 
-    # GET requests to meta/global
-    num_requests = get_num_requests('metaglobal')
     url = "/storage/meta/global"
 
     for x in range(num_requests):
-        resp = await storage.get(url, (200, 404))
+        resp, __ = await storage.get(url, (200, 404))
         if resp.status == 404:
-            data = json.dumps({"id": "global", "payload": _PAYLOAD})
+            data = json.dumps({"id": "global", "payload": payload})
             await storage.put(url, data=data, statuses=(200,))
 
     # Occasional reads of client records.
@@ -86,9 +97,7 @@ async def test(session):
         url = "/storage/clients"
         newer = int(time.time() - random.randint(3600, 360000))
         params = {"full": "1", "newer": str(newer)}
-        resp = await storage.get(url, params=params,
-                                 statuses=(200, 404))
-        await resp.json()
+        await storage.get(url, params=params, statuses=(200, 404))
 
     # Occasional updates to client records.
     if should_do('post'):
@@ -96,10 +105,9 @@ async def test(session):
         url = "/storage/clients"
         wbo = {'id': 'client' + cid, 'payload': cid * 300}
         data = json.dumps([wbo])
-        resp = await storage.post(url, data=data, statuses=(200,))
-        result = await resp.json()
-        assert len(result["success"]) == 1
-        assert len(result["failed"]) == 0
+        resp, result = await storage.post(url, data=data, statuses=(200,))
+        assert len(result["success"]) == 1, "No success records"
+        assert len(result["failed"]) == 0, "Found failed record"
 
     # GET requests to individual collections.
     num_requests = get_num_requests('count_distribution')
@@ -108,8 +116,7 @@ async def test(session):
         url = "/storage/" + cols[x]
         newer = int(time.time() - random.randint(3600, 360000))
         params = {"full": "1", "newer": str(newer)}
-        resp = await storage.get(url, params=params, statuses=(200, 404))
-        await resp.json()
+        await storage.get(url, params=params, statuses=(200, 404))
 
     # POST requests with several WBOs batched together
     num_requests = get_num_requests('post_count_distribution')
@@ -129,16 +136,18 @@ async def test(session):
         url = "/storage/" + cols[x]
         data = []
         # Random batch size, skewed slightly towards the upper limit.
-        items_per_batch = min(random.randint(20, _BATCH_MAX_COUNT + 80),
-                              _BATCH_MAX_COUNT)
-        for i in range(items_per_batch):
+        items_per_batch = min(random.randint(20, batch_max_count + 80),
+                              batch_max_count)
+        for _i in range(items_per_batch):
             randomness = os.urandom(10)
             id = base64.urlsafe_b64encode(randomness).rstrip(b"=")
             id = id.decode('utf8')
             id += str(int((time.time() % 100) * 100000))
             # Random payload length.  They can be big, but skew small.
-            # This gives min=300, mean=450, max=7000
-            payload_length = min(int(random.paretovariate(3) * 300), 7000)
+            # This gives min=300, mean=450, max=config.max_record_payload_bytes
+            payload_length = min(
+                int(random.paretovariate(3) * 300),
+                config.get("max_record_payload_bytes"))
 
             # XXX should be in the class
             token = storage.auth_token.decode('utf8')
@@ -164,10 +173,30 @@ async def test(session):
             else:
                 url += "?batch=%s" % batch_id
 
-        resp = await storage.post(url, data=data, statuses=(status,))
-        result = await resp.json()
-        assert len(result["success"]) == items_per_batch, result
-        assert len(result["failed"]) == 0, result
+        resp, result = await storage.post(url, data=data, statuses=(status,))
+        assert len(result["success"]) == items_per_batch, (
+            "Result success did not have expected number of"
+            "items in batch {}".format(result)
+        )
+        assert len(result["failed"]) == 0, (
+            "Result contained failed records: {}".format(result)
+        )
 
         if transact and not committing:
             batch_id = result["batch"]
+
+    if not _DISABLE_DELETES:
+        # DELETE requests.
+        # We might choose to delete some individual collections, or to
+        # do a full reset and delete all the data.  Never both in the
+        # same run.
+        num_requests = get_num_requests('delete_count_distribution')
+        if num_requests:
+            cols = random.sample(_COLLS, num_requests)
+            for x in range(num_requests):
+                url = "/storage/" + cols[x]
+                resp, result = await storage.delete(url, statuses=(200, 204))
+        else:
+            if should_do('deleteall'):
+                url = "/storage"
+                resp, result = await storage.delete(url, statuses=(200,))
