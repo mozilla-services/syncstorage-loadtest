@@ -1,6 +1,6 @@
 Storage load test
 -----------------
-* Note: this requires Python version 3.5 or 3.6
+* Note: this requires Python version 3.6+
 
 To run it locally::
 
@@ -9,7 +9,7 @@ To run it locally::
     $ bin/molotov --max-runs 5 -cxv loadtest.py
 
 
-To run it locally, directly from Github (assuming Molotov is installed)::
+To run it locally, directly from GitHub (assuming Molotov is installed)::
 
     $ moloslave https://github.com/mozilla-services/syncstorage-loadtest test
 
