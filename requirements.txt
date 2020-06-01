@@ -5,3 +5,4 @@ PyBrowserID
 hawkauthlib
 tokenlib
 aiomeasures
+aiodogstatsd
