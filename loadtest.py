@@ -6,9 +6,11 @@ import random
 import json
 from collections import defaultdict
 from datetime import datetime
+from pprint import pformat
+
+import molotov
 
 from storage import StorageClient, error_counts
-from molotov import global_teardown, setup_session, scenario
 
 
 _PAYLOAD = """\
@@ -31,7 +33,8 @@ _DISABLE_DELETES = (os.environ.get('DISABLE_DELETES', 'false').lower()
 _LIMIT_COLLECTIONS = (os.environ.get('LIMIT_COLLECTIONS', 'true').lower()
                       in ('true', '1'))
 _COL_LIMIT = 2 * 1000**3  # 2GB
-#_COL_LIMIT = 1000
+
+session_stats = {}
 
 
 def should_do(name):
@@ -51,7 +54,7 @@ def get_num_requests(name):
     return count
 
 
-@setup_session()
+@molotov.setup_session()
 async def _session(worker_num, session):
     exc = []
 
@@ -71,7 +74,7 @@ async def _session(worker_num, session):
         raise exc[0]
 
 
-@scenario(1)
+@molotov.scenario(1)
 async def test(session):
     storage = session.storage
     #print('ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ %s %s %s' %
@@ -129,7 +132,6 @@ async def test(session):
         assert len(result["success"]) == 1, "No success records"
         assert len(result["failed"]) == 0, "Found failed record"
         storage.write_counts['clients'] += payload_length
-
 
     # GET requests to individual collections.
     num_requests = get_num_requests('count_distribution')
@@ -232,6 +234,17 @@ async def test(session):
                 resp, result = await storage.delete(url, statuses=(200,))
 
 
-@global_teardown()
-def stats():
-    print(error_counts)
+@molotov.teardown_session()
+async def save_session_stats(worker_num, session):
+    session_stats[worker_num] = session.storage.write_counts
+
+
+@molotov.global_teardown()
+def print_stats():
+    #if session.args.verbose:
+    for worker_num, write_counts in session_stats.items():
+        print("Session write_counts ({}): {}".format(
+            worker_num,
+            pformat(sorted(write_counts.items()))
+        ))
+    print("Error codes: {}".format(pformat(sorted(error_counts.items()))))
