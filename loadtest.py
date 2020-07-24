@@ -5,6 +5,7 @@ import time
 import random
 import json
 from collections import defaultdict
+from datetime import datetime
 
 from storage import StorageClient, error_counts
 from molotov import global_teardown, setup_session, scenario
@@ -78,8 +79,11 @@ async def test(session):
     if _LIMIT_COLLECTIONS:
         for col, write_count in list(storage.write_counts.items()):
             if write_count > _COL_LIMIT:
-                print('RRRRRESET %s %s %s' %
-                      (storage.uid, storage.write_counts, error_counts))
+                print('RRRRRESET %s %s %s %s' %
+                      (datetime.now().isoformat(),
+                       storage.uid,
+                       storage.write_counts,
+                       error_counts))
                 session.storage.generate()
                 storage.write_counts.clear()
 
