@@ -2,9 +2,10 @@ import os
 import hmac
 import random
 import time
-from urllib.parse import urlparse, urlunparse, urlencode
 import base64
 import hashlib
+from collections import defaultdict
+from urllib.parse import urlparse, urlunparse, urlencode
 
 from tokenlib import make_token, get_derived_secret as derive
 import browserid.jwt
@@ -38,6 +39,7 @@ MOCKMYID_PRIVATE_KEY = browserid.jwt.DS128Key({
 
 _DEFAULT = os.environ.get("SERVER_URL", "https://token.stage.mozaws.net")
 
+error_counts = defaultdict(int)
 
 def b64encode(data):
     return base64.b64encode(data).decode("ascii")
@@ -56,6 +58,7 @@ class StorageClient(object):
         self.endpoint_url = None
         self.endpoint_scheme = None
         self.endpoint_host = None
+        self.write_counts = defaultdict(int)
         self.generate()
 
     def _get_url(self, path, params=None):
@@ -222,6 +225,8 @@ class StorageClient(object):
                 options['headers']['Authorization'] = self._auth(meth, url)
                 async with call(url, **options) as resp:
                     if statuses is not None:
+                        if resp.status not in statuses:
+                            error_counts[resp.status] += 1
                         assert resp.status in statuses, (
                             "Reauth Response {} not in {}".format(
                                 resp.status,
@@ -231,6 +236,8 @@ class StorageClient(object):
                     return resp, body
             else:
                 if statuses is not None:
+                    if resp.status not in statuses:
+                        error_counts[resp.status] += 1
                     assert resp.status in statuses,  (
                             "Response {} not in {}".format(
                                 resp.status,

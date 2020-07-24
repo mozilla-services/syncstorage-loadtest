@@ -4,9 +4,10 @@ import base64
 import time
 import random
 import json
+from collections import defaultdict
 
-from storage import StorageClient
-from molotov import setup_session, scenario
+from storage import StorageClient, error_counts
+from molotov import global_teardown, setup_session, scenario
 
 
 _PAYLOAD = """\
@@ -26,6 +27,10 @@ _BATCH_MAX_COUNT = 100
 
 _DISABLE_DELETES = (os.environ.get('DISABLE_DELETES', 'false').lower()
                     in ('true', '1'))
+_LIMIT_COLLECTIONS = (os.environ.get('LIMIT_COLLECTIONS', 'true').lower()
+                      in ('true', '1'))
+_COL_LIMIT = 2 * 1000**3  # 2GB
+#_COL_LIMIT = 1000
 
 
 def should_do(name):
@@ -68,6 +73,15 @@ async def _session(worker_num, session):
 @scenario(1)
 async def test(session):
     storage = session.storage
+    #print('ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ %s %s %s' %
+    #      (id(session), storage.uid, storage.write_counts))
+    if _LIMIT_COLLECTIONS:
+        for col, write_count in list(storage.write_counts.items()):
+            if write_count > _COL_LIMIT:
+                print('RRRRRESET %s %s %s' %
+                      (storage.uid, storage.write_counts, error_counts))
+                session.storage.generate()
+                storage.write_counts.clear()
 
     # Respect the server limits.
     _, config = await storage.get("/info/configuration")
@@ -103,11 +117,15 @@ async def test(session):
     if should_do('post'):
         cid = str(get_num_requests('distribution'))
         url = "/storage/clients"
-        wbo = {'id': 'client' + cid, 'payload': cid * 300}
+        payload = cid * 300
+        payload_length = len(payload)
+        wbo = {'id': 'client' + cid, 'payload': payload}
         data = json.dumps([wbo])
         resp, result = await storage.post(url, data=data, statuses=(200,))
         assert len(result["success"]) == 1, "No success records"
         assert len(result["failed"]) == 0, "Found failed record"
+        storage.write_counts['clients'] += payload_length
+
 
     # GET requests to individual collections.
     num_requests = get_num_requests('count_distribution')
@@ -132,28 +150,31 @@ async def test(session):
     else:
         cols = random.sample(_COLLS, num_requests)
 
+    payload_lengths = defaultdict(int)
     for x in range(num_requests):
-        url = "/storage/" + cols[x]
+        col = cols[x]
+        url = "/storage/" + col
         data = []
         # Random batch size, skewed slightly towards the upper limit.
         items_per_batch = min(random.randint(20, batch_max_count + 80),
                               batch_max_count)
         for _i in range(items_per_batch):
             randomness = os.urandom(10)
-            id = base64.urlsafe_b64encode(randomness).rstrip(b"=")
-            id = id.decode('utf8')
-            id += str(int((time.time() % 100) * 100000))
+            bso_id = base64.urlsafe_b64encode(randomness).rstrip(b"=")
+            bso_id = bso_id.decode('utf8')
+            bso_id += str(int((time.time() % 100) * 100000))
             # Random payload length.  They can be big, but skew small.
             # This gives min=300, mean=450, max=config.max_record_payload_bytes
             payload_length = min(
                 int(random.paretovariate(3) * 300),
                 config.get("max_record_payload_bytes"))
+            payload_lengths[col] += payload_length
 
             # XXX should be in the class
             token = storage.auth_token.decode('utf8')
             payload_chunks = int((payload_length / len(token)) + 1)
             payload = (token * payload_chunks)[:payload_length]
-            wbo = {'id': id, 'payload': payload}
+            wbo = {'id': bso_id, 'payload': payload}
             data.append(wbo)
 
         data = json.dumps(data)
@@ -182,6 +203,11 @@ async def test(session):
             "Result contained failed records: {}".format(result)
         )
 
+        if not transact or committing:
+            for col, payload_length in payload_lengths.items():
+                storage.write_counts[col] += payload_length
+            payload_lengths.clear()
+
         if transact and not committing:
             batch_id = result["batch"]
 
@@ -200,3 +226,8 @@ async def test(session):
             if should_do('deleteall'):
                 url = "/storage"
                 resp, result = await storage.delete(url, statuses=(200,))
+
+
+@global_teardown()
+def stats():
+    print(error_counts)
