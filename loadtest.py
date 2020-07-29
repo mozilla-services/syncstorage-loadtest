@@ -233,21 +233,27 @@ async def test(session):
                 url = "/storage"
                 resp, result = await storage.delete(url, statuses=(200,))
 
+F = '{}-syncstorage-loadtest.out'.format(datetime.now().isoformat())
 
 @molotov.teardown_session()
 async def save_session_stats(worker_num, session):
     print('ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ')
-    with open('syncstorage-loadtest.out', 'a') as fp:
+    with open(F, 'a') as fp:
         session_stats[worker_num] = session.storage.write_counts
         print(session_stats)
         print("worker_num ({}): {}".format(worker_num, session_stats), file=fp)
+        print("worker_num ({}): Error codes: {}".format(
+            worker_num,
+            pformat(sorted(error_counts.items()))
+        ),
+              file=fp)
     print('!ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ')
 
 
 @molotov.global_teardown()
 def print_stats():
     #if session.args.verbose:
-    with open('syncstorage-loadtest.out', 'a') as fp:
+    with open(F, 'a') as fp:
         print('BBBBBBBBBBBBBBBBBBBB')
         print(session_stats)
         print('!BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB')
