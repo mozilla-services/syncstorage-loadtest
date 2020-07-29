@@ -236,15 +236,31 @@ async def test(session):
 
 @molotov.teardown_session()
 async def save_session_stats(worker_num, session):
-    session_stats[worker_num] = session.storage.write_counts
+    print('ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ')
+    with open('syncstorage-loadtest.out', 'a') as fp:
+        session_stats[worker_num] = session.storage.write_counts
+        print(session_stats)
+        print("worker_num ({}): {}".format(worker_num, session_stats), file=fp)
+    print('!ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ')
 
 
 @molotov.global_teardown()
 def print_stats():
     #if session.args.verbose:
-    for worker_num, write_counts in session_stats.items():
-        print("Session write_counts ({}): {}".format(
-            worker_num,
-            pformat(sorted(write_counts.items()))
-        ))
-    print("Error codes: {}".format(pformat(sorted(error_counts.items()))))
+    with open('syncstorage-loadtest.out', 'a') as fp:
+        print('BBBBBBBBBBBBBBBBBBBB')
+        print(session_stats)
+        print('!BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB')
+        for worker_num, write_counts in session_stats.items():
+            print('CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC')
+            print("Session write_counts ({}): {}".format(
+                worker_num,
+                pformat(sorted(write_counts.items()))
+            ))
+            print("Session write_counts ({}): {}".format(
+                worker_num,
+                pformat(sorted(write_counts.items()))
+            ), file=fp)
+        print("Error codes: {}".format(pformat(sorted(error_counts.items()))))
+        print("Error codes: {}".format(pformat(sorted(error_counts.items()))),
+              file=fp)
