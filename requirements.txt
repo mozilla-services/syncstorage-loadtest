@@ -4,5 +4,4 @@ configparser==3.5.0b2
 PyBrowserID
 hawkauthlib
 tokenlib
-aiomeasures
 aiodogstatsd
