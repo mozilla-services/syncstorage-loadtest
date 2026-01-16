@@ -6,7 +6,7 @@ import random
 import json
 
 from storage import StorageClient
-from molotov import setup_session, scenario
+from molotov import setup_session, teardown_session, scenario
 
 
 _PAYLOAD = """\
@@ -63,6 +63,12 @@ async def _session(worker_num, session):
     t.join()
     if len(exc) > 0:
         raise exc[0]
+
+
+@teardown_session()
+async def _teardown_session(worker_num, session):
+    if hasattr(session, 'storage') and session.storage:
+        session.storage.cleanup()
 
 
 @scenario(1)

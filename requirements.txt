@@ -1,7 +1,9 @@
-git+git://github.com/loads/molotov.git
+git+https://github.com/tarekziade/molotov.git
 pexpect
 configparser==3.5.0b2
-PyBrowserID
 hawkauthlib
 tokenlib
 aiodogstatsd
+PyFxA
+PyJWT
+cryptography
