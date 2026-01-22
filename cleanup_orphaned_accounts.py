@@ -37,7 +37,7 @@ def save_tracked_accounts(accounts):
                 json.dump(accounts, f, indent=2)
     except IOError as e:
         print(f"Warning: Could not save tracking file: {e}")
-
+        raise
 
 def remove_account_from_tracking(email):
     accounts = load_tracked_accounts()
