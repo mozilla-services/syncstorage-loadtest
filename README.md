@@ -10,7 +10,53 @@ The tests can execute in three modes:
 
 ## Installation
 
-To run it locally:
+### Environment Setup
+
+To run the syncstorage load tests, you'll need a Python >=3.10 development environment with `Poetry` installed. You can also directly use `poetry run` to execute commands as described in the usage examples below.
+
+The easiest solution is to use `pyenv` and the `pyenv-virtualenv` plugin for your virtual environments as a way to isolate the dependencies from other projects.
+
+1. Install `pyenv` using the [latest documentation](https://github.com/pyenv/pyenv#installation) for your platform.
+
+2. Follow the instructions to install the `pyenv-virtualenv` plugin.
+   See the [pyenv-virtualenv](https://github.com/pyenv/pyenv-virtualenv) documentation.
+
+3. Ensure you've added `pyenv` and `pyenv-virtualenv` to your PATH.
+
+   Example:
+   ```shell
+   export PATH="$HOME/.pyenv/bin:$PATH"
+   eval "$(pyenv init -)"
+   eval "$(pyenv virtualenv-init -)"
+   ```
+
+4. Install Python version, create virtualenv, activate and install dependencies from inside the project directory.
+
+   **Note:** You can skip creating a virtual environment and invoke commands directly using `poetry run`.
+
+   ```shell
+   $ cd syncstorage-loadtest
+
+   # Install Python 3.10+
+   $ pyenv install 3.10
+
+   # Create named, associated virtualenv
+   $ pyenv virtualenv 3.10 syncstorage-loadtest  # or whatever name you prefer
+   $ pyenv local syncstorage-loadtest  # activates virtual env whenever you enter this directory
+
+   # Install Poetry and dependencies
+   $ pip install poetry
+   $ poetry install
+   ```
+
+5. Once you're in your virtual environment, run the load tests using:
+   ```bash
+   poetry run molotov [options] loadtest.py
+   ```
+
+### Quick Install
+
+If you already have Poetry installed:
 
 ```bash
 poetry install
