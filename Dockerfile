@@ -2,7 +2,7 @@
 
 # SyncStorage-LoadTest
 #
-FROM python:3-slim
+FROM python:3.10-slim
 
 RUN mkdir -p /app
 ADD . /app
@@ -19,22 +19,20 @@ RUN \
     RUN_DEPS="wget libssl-dev" && \
     apt-get update && \
     apt-get install -yq --no-install-recommends ${BUILD_DEPS} ${RUN_DEPS} && \
-    pip install virtualenv && \
-    python -m virtualenv -p `which python` apenv
-
-# app install
-RUN \
-    ./apenv/bin/pip install pyasn1 && \
-    ./apenv/bin/pip install -r requirements.txt && \
+    pip install --no-cache-dir poetry && \
     apt-get purge -yq --auto-remove ${BUILD_DEPS} && \
     apt-get autoremove -yqq && \
     apt-get clean -y
+
+# app install
+RUN poetry config virtualenvs.create false && \
+    poetry install --no-dev --no-interaction --no-ansi
 
 # Using:
 # Start an interactive terminal using
 # `docker run --net=host -it syncstorage-loadtest:local`
 # This will start a bash shell as root.
 # You can fire off a load test by calling:
-# `SERVER_URL=http://${HOST}:${PORT}#${SECRET} ./apenv/bin/molotov -v`
+# `SERVER_URL=http://${HOST}:${PORT}#${SECRET} molotov -v`
 
 ENTRYPOINT ["/bin/bash"]
