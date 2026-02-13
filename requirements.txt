@@ -1,9 +1,0 @@
-git+https://github.com/tarekziade/molotov.git
-pexpect
-configparser==3.5.0b2
-hawkauthlib
-tokenlib
-aiodogstatsd
-PyFxA
-PyJWT
-cryptography

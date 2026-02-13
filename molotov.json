@@ -1,6 +1,5 @@
 {
     "molotov": {
-        "requirements": "requirements.txt",
         "tests": {
             "massive": {
                 "duration": 300,
